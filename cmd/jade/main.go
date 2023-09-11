@@ -8,7 +8,6 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,6 +29,7 @@ var (
 	writer   bool
 	inline   bool
 	format   bool
+	verbose  bool
 	ns_files = map[string]bool{}
 )
 
@@ -38,14 +38,17 @@ func use() {
 	flag.PrintDefaults()
 }
 func init() {
-	flag.StringVar(&outdir, "d", "./", `directory for generated .go files`)
+	flag.StringVar(&outdir, "d", "", `directory for generated .go files`)
 	flag.StringVar(&basedir, "basedir", "./", `base directory for templates`)
-	flag.StringVar(&pkg_name, "pkg", "jade", `package name for generated files`)
-	flag.BoolVar(&format, "fmt", false, `HTML pretty print output for generated functions`)
-	flag.BoolVar(&inline, "inline", false, `inline HTML in generated functions`)
+	flag.StringVar(&pkg_name, "pkg", "", `package name for generated files`)
+	flag.BoolVar(&format, "fmt", true, `HTML pretty print output for generated functions`)
+	flag.BoolVar(&inline, "inline", true, `inline HTML in generated functions`)
 	flag.BoolVar(&stdlib, "stdlib", false, `use stdlib functions`)
-	flag.BoolVar(&stdbuf, "stdbuf", false, `use bytes.Buffer  [default bytebufferpool.ByteBuffer]`)
-	flag.BoolVar(&writer, "writer", false, `use io.Writer for output`)
+	flag.BoolVar(&stdbuf, "stdbuf", true, `use bytes.Buffer  [default bytebufferpool.ByteBuffer]`)
+	flag.BoolVar(&writer, "writer", true, `use io.Writer for output`)
+	flag.BoolVar(&verbose, "v", false, `increase log output`)
+
+	log.SetFlags(log.Lmsgprefix)
 }
 
 //
@@ -71,14 +74,15 @@ func goImports(absPath string, src []byte) []byte {
 	if err != nil {
 		log.Fatalln("goImports(): ", err)
 	}
-
 	return fmtOut
 }
 
 //
 
 func genFile(path, outdir, pkg_name string) {
-	log.Printf("\nfile: %q\n", path)
+	if verbose {
+		log.Printf("\nInput file: %s\n", path)
+	}
 
 	var (
 		dir, fname = filepath.Split(path)
@@ -102,7 +106,7 @@ func genFile(path, outdir, pkg_name string) {
 		ns_files[fname] = true
 	}
 
-	fl, err := ioutil.ReadFile(fname)
+	fl, err := os.ReadFile(fname)
 	if err != nil {
 		log.Fatalln("cmd/jade: ReadFile(): ", err)
 	}
@@ -122,7 +126,9 @@ func genFile(path, outdir, pkg_name string) {
 	before := bb.Len()
 	jst.WriteIn(bb)
 	if before == bb.Len() {
-		fmt.Print("generated: skipped (empty output)  done.\n\n")
+		if verbose {
+			fmt.Print("generated: skipped (empty output)  done.\n\n")
+		}
 		return
 	}
 	tpl.writeAfter(bb)
@@ -131,11 +137,11 @@ func genFile(path, outdir, pkg_name string) {
 
 	gst, err := parseGoSrc(outPath, bb)
 	if err != nil {
-		// TODO
-		bb.WriteString("\n\nERROR: parseGoSrc(): ")
-		bb.WriteString(err.Error())
-		ioutil.WriteFile(outPath+"__Error.go", bb.Bytes(), 0644)
-		log.Fatalln("cmd/jade: parseGoSrc(): ", err)
+		// write error to stderr for redirection where you want
+		fmt.Fprint(os.Stderr, string(bb.Bytes()))
+		//ioutil.WriteFile(outPath+"__Error.go", bb.Bytes(), 0644)
+		fmt.Fprintf(os.Stdout, "Error: Partially completed template available on stderr.\ncmd/jade: parseGoSrc(): %s\n", err)
+		os.Exit(1)
 	}
 
 	gst.collapseWriteString(inline, constName)
@@ -147,11 +153,14 @@ func genFile(path, outdir, pkg_name string) {
 
 	//
 
-	err = ioutil.WriteFile(outPath+".go", fmtOut, 0644)
+	outfile := filepath.Clean(outPath + ".go")
+	err = os.WriteFile(outfile, fmtOut, 0644)
 	if err != nil {
 		log.Fatalln("cmd/jade: WriteFile(): ", err)
 	}
-	fmt.Printf("generated: %s.go  done.\n\n", outPath)
+	if verbose {
+		log.Printf("Generated %s\n", outfile)
+	}
 }
 
 func genDir(dir, outdir, pkg_name string) {
@@ -182,10 +191,12 @@ func main() {
 
 	jade.Config(golang)
 
-	if _, err := os.Stat(outdir); os.IsNotExist(err) {
-		os.MkdirAll(outdir, 0755)
+	if outdir != "" {
+		if _, err := os.Stat(outdir); os.IsNotExist(err) {
+			os.MkdirAll(outdir, 0755)
+		}
+		outdir, _ = filepath.Abs(outdir)
 	}
-	outdir, _ = filepath.Abs(outdir)
 
 	if _, err := os.Stat(basedir); !os.IsNotExist(err) && basedir != "./" {
 		os.Chdir(basedir)
@@ -199,6 +210,26 @@ func main() {
 		}
 
 		absPath, _ := filepath.Abs(jadePath)
+
+		// default to generate next to jade file
+		if outdir == "" {
+			outdir, _ = filepath.Split(absPath)
+		}
+		// guess package name from directory structure
+		if pkg_name == "" {
+			pkg_name = filepath.Base(outdir)
+		}
+		// defaults if all else fails
+		if pkg_name == "." {
+			pkg_name = "jade"
+		}
+		if len(outdir) == 0 {
+			outdir = "./"
+		}
+		if verbose {
+			fmt.Printf("Package: %s\nOutput directory: %s\n", pkg_name, outdir)
+		}
+
 		if stat.IsDir() {
 			genDir(absPath, outdir, pkg_name)
 		} else {

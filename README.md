@@ -1,7 +1,12 @@
 # Jade.go - template engine for Go (golang)  
+This is a fork of (github.com/Joker/jade) with a few DX improvements:
+
+* Allows arbitrary go code to define template data structs and more flexibility in calling the render function.
+
+* Assumes sensible defaults to allow template building via a make file without extensive configuration at the command line
+
 Package jade (github.com/Joker/jade) is a simple and fast template engine implementing Jade/Pug template.  
 Jade precompiles templates to Go code or generates html/template.  
-Now Jade-lang is renamed to [Pug template engine](https://pugjs.org/language/tags.html).  
 
 [![GoDoc](https://godoc.org/github.com/Joker/jade?status.svg)](https://pkg.go.dev/github.com/Joker/jade#section-documentation) [![Go Report Card](https://goreportcard.com/badge/github.com/Joker/jade)](https://goreportcard.com/report/github.com/Joker/jade)
 
@@ -192,6 +197,12 @@ This filter is used as helper for command line tool
 Filter may be placed at any nesting level.  
 When Jade used as library :go filter is not needed.  
 
+### Nested filter   :code 
+```
+:go:code 
+    Arbitrary go code.  If you define a function as the last line of the arbitrary block, it is assumed to be the name and arguments for the render function.  This allows locality of defining the template data struct directly in the template and having that compiled to go. See `testdata/imp/complex` for an example.
+````
+
 ### Nested filter  :func
 ```
 :go:func
@@ -216,21 +227,21 @@ When Jade used as library :go filter is not needed.
     `Usage: ./jade [OPTION]... [FILE]...`  
     ```
     -basedir string
-            base directory for templates (default "./")
+            base directory for templates (default to path of input file)
     -d string
-            directory for generated .go files (default "./")
+            directory for generated .go files (default path of input file)
     -fmt
-            HTML pretty print output for generated functions
+            HTML pretty print output for generated functions (default true)
     -inline
-            inline HTML in generated functions
+            inline HTML in generated functions (default true)
     -pkg string
-            package name for generated files (default "jade")
+            package name for generated files (default to package named after output directory)
     -stdbuf
-            use bytes.Buffer  [default bytebufferpool.ByteBuffer]
+            use bytes.Buffer 
     -stdlib
             use stdlib functions
     -writer
-            use io.Writer for output
+            use io.Writer for output (default true)
     ```
 [^2]:
     Runtime `html/template` generation doesn't support the following features:  

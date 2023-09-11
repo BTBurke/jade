@@ -1,5 +1,10 @@
-:go:func Simple( u *model.User, st []model.Story )
-
+:go:code
+  type Test struct {
+    test string
+  }
+  
+  func (t *Test) Simple(u *model.User, st []model.Story, w io.Writer)
+    
 :go:import "github.com/Joker/jade/testdata/imp/model"
 
 html

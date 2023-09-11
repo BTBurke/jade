@@ -133,6 +133,8 @@ func filterGo(subf, args, text string) {
 		}
 	case "import":
 		goFlt.Import = text
+	case "code":
+		goFlt.Code = text
 	}
 }
 

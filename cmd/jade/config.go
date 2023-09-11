@@ -25,7 +25,11 @@ import (
 	{{.}}
 {{- end}}
 
-{{.Func}} {
+{{- range .Code}}
+  {{.}}
+{{- end}}
+
+{{if .Func }}{{.Func}} { {{ end -}}
 	{{.Before}}
 `
 	file_end = `
@@ -86,6 +90,7 @@ type layout struct {
 	Func    string
 	Before  string
 	After   string
+	Code    []string
 }
 
 func (data *layout) writeBefore(wr io.Writer) {
@@ -114,7 +119,6 @@ func newLayout(constName string) layout {
 		`"html"`,
 		`"strconv"`,
 		`"github.com/Joker/hpp"`,
-		`pool "github.com/valyala/bytebufferpool"`,
 	}
 
 	if !inline {
@@ -122,7 +126,7 @@ func newLayout(constName string) layout {
 	}
 
 	if writer {
-		tpl.Bbuf = "wr io.Writer"
+		tpl.Bbuf = "w io.Writer"
 		tpl.Before = "buffer := &WriterAsBuffer{wr}"
 	} else if stdbuf {
 		tpl.Bbuf = "buffer *bytes.Buffer"
@@ -132,18 +136,18 @@ func newLayout(constName string) layout {
 
 	if format {
 		tpl.Before = `
-			r, w := io.Pipe()
+			r, wr := io.Pipe()
 			go func() {
-				buffer := &WriterAsBuffer{w}`
+				buffer := &WriterAsBuffer{wr}`
 
 		if writer {
 			tpl.After = `
 				w.Close()
 			}()
-			hpp.Format(r,wr)`
+			hpp.Format(r,w)`
 		} else {
 			tpl.After = `
-				w.Close()
+				wr.Close()
 			}()
 			hpp.Format(r,buffer)`
 		}
@@ -156,6 +160,10 @@ func newLayout(constName string) layout {
 	if goFilter.Name != "" {
 		tpl.Func = "func " + goFilter.Name
 		goFilter.Name = ""
+	} else if goFilter.Code != "" {
+		// if name not explicitly set but code preamble, assume that code
+		// declares the implementation function
+		tpl.Func = ""
 	} else {
 		tpl.Func = `func Jade_` + constName
 	}
@@ -175,7 +183,7 @@ func newLayout(constName string) layout {
 		}
 		tpl.Func += "(" + strings.Join(args, ",") + ")"
 		goFilter.Args = ""
-	} else {
+	} else if tpl.Func != "" {
 		tpl.Func += `(` + tpl.Bbuf + `) `
 	}
 
@@ -192,5 +200,21 @@ func newLayout(constName string) layout {
 		tpl.Import = append(tpl.Import, imp...)
 		goFilter.Import = ""
 	}
+
+	if goFilter.Code != "" {
+		imp := strings.Split(goFilter.Code, "\n")
+		for k, line := range imp {
+			imp[k] = strings.Trim(line, " \t")
+			// if last line of code block declares a function that doesn't have an opening
+			// brace, assume this should be start of function definition
+			if k == len(imp)-1 && strings.Contains(line, "func") && !strings.HasSuffix(imp[k], "{") {
+				log.Printf("adding closing brace to: %s", imp[k])
+				imp[k] = imp[k] + ` {`
+			}
+		}
+		tpl.Code = append(tpl.Code, imp...)
+		goFilter.Code = ""
+	}
+
 	return tpl
 }

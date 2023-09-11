@@ -211,7 +211,7 @@ func Config(c ReplaseTokens) {
 //
 
 type goFilter struct {
-	Name, Args, Import string
+	Name, Args, Import, Code string
 }
 
 var goFlt goFilter
